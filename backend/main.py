@@ -1,74 +1,90 @@
-import sys
-import os
-from pathlib import Path
+"""
+ATLAS MONITOR WATCH - FastAPI Application Root
+Explainable Clinical Trial Intelligence & Continuous 12-Cut Surveillance.
+"""
+
 from contextlib import asynccontextmanager
-
-backend_dir = os.path.dirname(os.path.abspath(__file__))
-if backend_dir not in sys.path:
-    sys.path.insert(0, backend_dir)
-
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
-from app.core.config import settings
-from app.core.database import Base, engine, SessionLocal
-from app.api.endpoints import router as api_router
-from app.services.data_service import DataService
+
+from .database import init_db
+from .stage1.graph import ClinicalGraph
+from .stage2.trace import TraceLedger
+from .stage2.human_gate import HumanGate
+from .stage2.data_manager import DataManager
+from .stage3.watch import WatchSurveillance
+from .seed_data import populate_all
+
+from .api import studies, subjects, atlas_api, monitor_api, watch_api, governance_api
+
+# Global singletons
+clinical_graph = ClinicalGraph(study_id="ABC-101")
+trace_ledger = TraceLedger()
+human_gate = HumanGate(trace_ledger)
+data_manager = DataManager(trace_ledger)
+surveillance = WatchSurveillance(
+    study_id="ABC-101",
+    current_cut=8,
+    graph=clinical_graph,
+    trace_ledger=trace_ledger,
+    human_gate=human_gate,
+    data_manager=data_manager,
+)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: Create tables and seed initial clinical data
-    Base.metadata.create_all(bind=engine)
-    db = SessionLocal()
-    try:
-        DataService.seed_initial_study_data(db)
-        print("Initial clinical trial database & Knowledge Graph seeded successfully.")
-    except Exception as e:
-        print(f"Seed note: {e}")
-    finally:
-        db.close()
+    # Initialize DB & Seed realistic clinical trial records
+    init_db()
+    populate_all(clinical_graph, surveillance)
+
+    # Inject shared singletons into routers
+    subjects.set_context(clinical_graph, surveillance)
+    atlas_api.set_context(clinical_graph)
+    monitor_api.set_context(surveillance)
+    watch_api.set_context(surveillance)
+    governance_api.set_context(surveillance)
+
     yield
-    # Shutdown
+
 
 app = FastAPI(
-    title=settings.PROJECT_NAME,
-    version=settings.VERSION,
-    description="Integrated Clinical Trial Intelligence, Evidence, Review and Monitoring Platform",
-    lifespan=lifespan
+    title="ATLAS MONITOR WATCH API",
+    description="Explainable Clinical Trial Intelligence & Continuous 12-Cut Surveillance",
+    version="1.0.0",
+    lifespan=lifespan,
 )
 
-# CORS
+# Enable CORS for local Vite dev server
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.CORS_ORIGINS,
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Register API Router
-from fastapi.responses import FileResponse
-app.include_router(api_router, prefix=settings.API_V1_STR)
-
-@app.get("/health")
-def health():
-    return {"status": "HEALTHY", "platform": "ATLAS + MONITOR", "version": settings.VERSION}
-
-@app.get("/download-source-code")
-def download_source_code_root():
-    zip_path = Path(__file__).resolve().parent / "atlas-monitor-complete-source-code.zip"
-    if not zip_path.exists():
-        zip_path = Path(r"C:\Users\SOWMIYA\.gemini\antigravity\scratch\atlas-monitor\atlas-monitor-complete-source-code.zip")
-    if not zip_path.exists():
-        return {"error": "Archive not found"}
-    return FileResponse(path=str(zip_path), filename="atlas-monitor-complete-source-code.zip", media_type="application/zip")
+# Register Routers
+app.include_router(studies.router)
+app.include_router(subjects.router)
+app.include_router(atlas_api.router)
+app.include_router(monitor_api.router)
+app.include_router(watch_api.router)
+app.include_router(governance_api.router)
 
 
-# Mount static frontend if available
-frontend_dist = Path(__file__).resolve().parent.parent / "frontend" / "dist"
-if frontend_dist.exists():
-    app.mount("/", StaticFiles(directory=str(frontend_dist), html=True), name="static")
+@app.get("/")
+def root():
+    return {
+        "title": "ATLAS MONITOR WATCH",
+        "subtitle": "Explainable Clinical Trial Intelligence & Continuous Monitoring",
+        "tagline": "Understand the data. Review the risk. Watch what changes. Explain every decision.",
+        "status": "OPERATIONAL",
+        "study": "ABC-101",
+        "current_cut": surveillance.current_cut,
+    }
+
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("main:app", host="127.0.0.1", port=8000, reload=True)
+    uvicorn.run("backend.main:app", host="127.0.0.1", port=8000, reload=True)

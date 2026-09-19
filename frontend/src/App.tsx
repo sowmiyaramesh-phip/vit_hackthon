@@ -1,373 +1,303 @@
-import React, { useState, useEffect } from 'react';
-import { Navbar } from './components/Navbar';
-import { Sidebar, ScreenId } from './components/Sidebar';
-import { EvidenceDrawer } from './components/EvidenceDrawer';
-import { User, Study, EvidenceItem } from './types';
-import {
-  getCurrentUser, login, getStudies, getStudy,
-  runMonitoringCycle, reseedDatabase
-} from './api';
-
-// Screen imports (24 screens)
-import { LoginScreen } from './screens/LoginScreen';
-import { StudySelectScreen } from './screens/StudySelectScreen';
-import { StudySetupScreen } from './screens/StudySetupScreen';
-import { DashboardScreen } from './screens/DashboardScreen';
-import { SubjectsScreen } from './screens/SubjectsScreen';
-import { AddSubjectScreen } from './screens/AddSubjectScreen';
-import { ImportScreen } from './screens/ImportScreen';
-import { ValidationScreen } from './screens/ValidationScreen';
-import { KnowledgeGraphScreen } from './screens/KnowledgeGraphScreen';
-import { Subject360Screen } from './screens/Subject360Screen';
-import { AskAtlasScreen } from './screens/AskAtlasScreen';
-import { FindingsScreen } from './screens/FindingsScreen';
-import { ReviewCrewScreen } from './screens/ReviewCrewScreen';
-import { MedicalReviewScreen } from './screens/MedicalReviewScreen';
-import { QueriesScreen } from './screens/QueriesScreen';
-import { ComplianceScreen } from './screens/ComplianceScreen';
-import { HumanGateScreen } from './screens/HumanGateScreen';
-import { ClarificationScreen } from './screens/ClarificationScreen';
-import { DecisionTraceScreen } from './screens/DecisionTraceScreen';
-import { CycleReportScreen } from './screens/CycleReportScreen';
-import { SiteOperationsScreen } from './screens/SiteOperationsScreen';
-import { ProtocolRulesScreen } from './screens/ProtocolRulesScreen';
-import { QueryHistoryScreen } from './screens/QueryHistoryScreen';
-import { DataCutSimulatorScreen } from './screens/DataCutSimulatorScreen';
+import React, { useState, useEffect } from "react";
+import { MainLayout } from "./layouts/MainLayout";
+import { Login } from "./pages/Login";
+import { StudyDashboard } from "./pages/StudyDashboard";
+import { Subjects } from "./pages/Subjects";
+import { AddSubjectWizard } from "./pages/AddSubjectWizard";
+import { Subject360 } from "./pages/Subject360";
+import { DiseaseExplorer } from "./pages/DiseaseExplorer";
+import { DiseaseDetail } from "./pages/DiseaseDetail";
+import { KnowledgeGraphView } from "./pages/KnowledgeGraphView";
+import { AskAtlas } from "./pages/AskAtlas";
+import { Findings } from "./pages/Findings";
+import { FindingDetail } from "./pages/FindingDetail";
+import { ReviewCrewView } from "./pages/ReviewCrewView";
+import { MedicalReviewView } from "./pages/MedicalReviewView";
+import { DataQueriesView } from "./pages/DataQueriesView";
+import { ComplianceView } from "./pages/ComplianceView";
+import { HumanGateView } from "./pages/HumanGateView";
+import { DecisionTraceView } from "./pages/DecisionTraceView";
+import { CycleReportView } from "./pages/CycleReportView";
+import { WatchDashboard } from "./pages/WatchDashboard";
+import { CutTimelineView } from "./pages/CutTimelineView";
+import { CutDetailsView } from "./pages/CutDetailsView";
+import { AdversarialEventsView } from "./pages/AdversarialEventsView";
+import { PendingDecisionsView } from "./pages/PendingDecisionsView";
+import { ExplainDecisionView } from "./pages/ExplainDecisionView";
+import { SurveillanceReportView } from "./pages/SurveillanceReportView";
+import { ProtocolAmendmentsView } from "./pages/ProtocolAmendmentsView";
+import { AuditTrailView } from "./pages/AuditTrailView";
+import { QueryHistoryView } from "./pages/QueryHistoryView";
+import { api } from "./services/api";
 
 export const App: React.FC = () => {
-  const [user, setUser] = useState<User | null>(null);
-  const [studies, setStudies] = useState<Study[]>([]);
-  const [currentStudy, setCurrentStudy] = useState<Study | null>(null);
-  const [currentScreen, setCurrentScreen] = useState<ScreenId>('DASHBOARD');
-  const [selectedSubjectId, setSelectedSubjectId] = useState<string>('042-S02-004');
-  const [isRunningCycle, setIsRunningCycle] = useState(false);
-  const [cycleNotification, setCycleNotification] = useState<string | null>(null);
+  const getInitialPath = () => {
+    const hash = window.location.hash.replace(/^#/, "");
+    return hash || "/";
+  };
 
-  // Evidence Drawer state
-  const [drawerOpen, setDrawerOpen] = useState(false);
-  const [drawerEvidence, setDrawerEvidence] = useState<EvidenceItem[]>([]);
-  const [drawerTitle, setDrawerTitle] = useState('Verified Clinical Evidence Chain');
+  const [currentPath, setCurrentPath] = useState<string>(getInitialPath);
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(true);
+  const [pendingEscalationsCount, setPendingEscalationsCount] = useState<number>(2);
 
-  // Load initial user & studies
+  // Sync with browser hash changes
   useEffect(() => {
-    const token = localStorage.getItem('atlas_token');
-    if (token) {
-      getCurrentUser()
-        .then((u) => {
-          setUser(u);
-          return getStudies();
-        })
-        .then((studyList) => {
-          setStudies(studyList);
-          if (studyList && studyList.length > 0) {
-            setCurrentStudy(studyList[0]);
-          }
-        })
-        .catch(() => {
-          localStorage.removeItem('atlas_token');
-          setUser(null);
-        });
-    }
+    const handleHashChange = () => {
+      const hash = window.location.hash.replace(/^#/, "");
+      setCurrentPath(hash || "/");
+    };
+    window.addEventListener("hashchange", handleHashChange);
+    return () => window.removeEventListener("hashchange", handleHashChange);
   }, []);
 
-  const handleLogin = async (email: string, pass: string) => {
-    const res = await login(email, pass);
-    setUser(res.user);
-    const studyList = await getStudies();
-    setStudies(studyList);
-    if (studyList && studyList.length > 0) {
-      setCurrentStudy(studyList[0]);
-    }
-    setCurrentScreen('DASHBOARD');
-  };
-
-  const handleLogout = () => {
-    localStorage.removeItem('atlas_token');
-    setUser(null);
-    setCurrentStudy(null);
-    setCurrentScreen('DASHBOARD');
-  };
-
-  const refreshActiveStudy = async () => {
-    if (!currentStudy) return;
-    try {
-      const refreshed = await getStudy(currentStudy.id);
-      setCurrentStudy(refreshed);
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  const handleRunCycle = async () => {
-    if (!currentStudy || isRunningCycle) return;
-    setIsRunningCycle(true);
-    setCycleNotification(null);
-    try {
-      const res = await runMonitoringCycle(currentStudy.id);
-      setCycleNotification(res.message || 'Monitoring cycle completed successfully.');
-      await refreshActiveStudy();
-    } catch (e: any) {
-      alert(e.message || 'Failed to execute monitoring cycle');
-    } finally {
-      setIsRunningCycle(false);
-    }
-  };
-
-  const handleReseed = async () => {
-    if (!window.confirm('Reset database to clean CDISC demonstration state?')) return;
-    try {
-      await reseedDatabase();
-      const studyList = await getStudies();
-      setStudies(studyList);
-      if (studyList && studyList.length > 0) {
-        setCurrentStudy(studyList[0]);
+  // Poll or fetch pending escalations count
+  useEffect(() => {
+    const fetchEscalations = async () => {
+      try {
+        const escalations = await api.getEscalations("PENDING");
+        setPendingEscalationsCount(escalations.length);
+      } catch (e) {
+        // keep current count
       }
-      alert('Database reseeded successfully with CDISC scenarios.');
-    } catch (e: any) {
-      alert(e.message || 'Failed to reseed database');
+    };
+    fetchEscalations();
+  }, [currentPath]);
+
+  const navigateTo = (path: string) => {
+    if (path === "/login") {
+      setIsAuthenticated(false);
     }
+    window.location.hash = path;
+    setCurrentPath(path);
   };
 
-  const handleSelectSubject = (usubjid: string) => {
-    setSelectedSubjectId(usubjid);
-    setCurrentScreen('SUBJECT_360');
+  const handleLogin = () => {
+    setIsAuthenticated(true);
+    navigateTo("/");
   };
 
-  const handleViewEvidence = (evidence: EvidenceItem[], title?: string) => {
-    setDrawerEvidence(evidence || []);
-    if (title) setDrawerTitle(title);
-    setDrawerOpen(true);
-  };
-
-  // If not logged in, render LoginScreen
-  if (!user) {
-    return <LoginScreen onLogin={handleLogin} />;
+  // If user signed out, show Login page
+  if (!isAuthenticated || currentPath === "/login") {
+    return <Login onLogin={handleLogin} />;
   }
 
-  // If no study chosen, render StudySelectScreen
-  if (!currentStudy) {
+  // Generate dynamic breadcrumbs
+  const getBreadcrumbs = () => {
+    const crumbs: Array<{ label: string; onClick?: () => void; active?: boolean }> = [
+      { label: "Study ABC-101", onClick: () => navigateTo("/") },
+    ];
+
+    if (currentPath === "/") {
+      crumbs[0].active = true;
+      return crumbs;
+    }
+
+    if (currentPath === "/subjects") {
+      crumbs.push({ label: "Subjects", active: true });
+    } else if (currentPath === "/subjects/new" || currentPath === "/subjects/add") {
+      crumbs.push({ label: "Subjects", onClick: () => navigateTo("/subjects") });
+      crumbs.push({ label: "Add Subject Wizard", active: true });
+    } else if (currentPath.startsWith("/subjects/")) {
+      const subjId = currentPath.split("/")[2];
+      if (subjId === "add" || subjId === "new") {
+        crumbs.push({ label: "Subjects", onClick: () => navigateTo("/subjects") });
+        crumbs.push({ label: "Add Subject Wizard", active: true });
+      } else {
+        crumbs.push({ label: "Subjects", onClick: () => navigateTo("/subjects") });
+        crumbs.push({ label: decodeURIComponent(subjId), active: true });
+      }
+    } else if (currentPath === "/disease-explorer") {
+      crumbs.push({ label: "Disease Explorer", active: true });
+    } else if (currentPath.startsWith("/disease/")) {
+      const diseaseName = currentPath.split("/")[2];
+      crumbs.push({ label: "Disease Explorer", onClick: () => navigateTo("/disease-explorer") });
+      crumbs.push({ label: decodeURIComponent(diseaseName), active: true });
+    } else if (currentPath === "/graph") {
+      crumbs.push({ label: "Knowledge Graph", active: true });
+    } else if (currentPath === "/ask-atlas") {
+      crumbs.push({ label: "Ask ATLAS", active: true });
+    } else if (currentPath === "/findings") {
+      crumbs.push({ label: "Findings", active: true });
+    } else if (currentPath.startsWith("/findings/")) {
+      const findingId = currentPath.split("/")[2];
+      crumbs.push({ label: "Findings", onClick: () => navigateTo("/findings") });
+      crumbs.push({ label: decodeURIComponent(findingId), active: true });
+    } else if (currentPath === "/protocol-rules") {
+      crumbs.push({ label: "Protocol & Rules", active: true });
+    } else if (currentPath.startsWith("/monitor/")) {
+      crumbs.push({ label: "MONITOR", onClick: () => navigateTo("/monitor/crew") });
+      const sub = currentPath.replace("/monitor/", "");
+      const labels: Record<string, string> = {
+        crew: "Review Crew",
+        "medical-review": "Medical Review",
+        queries: "Data Queries",
+        compliance: "Protocol Compliance",
+        "human-gate": "Human Gate",
+        trace: "Decision Trace",
+        "cycle-report": "Cycle Report",
+      };
+      crumbs.push({ label: labels[sub] || sub, active: true });
+    } else if (currentPath.startsWith("/watch")) {
+      crumbs.push({ label: "WATCH", onClick: () => navigateTo("/watch") });
+      if (currentPath !== "/watch") {
+        const sub = currentPath.replace("/watch/", "");
+        const labels: Record<string, string> = {
+          timeline: "12-Cut Timeline",
+          "cut-details": "Cut Details",
+          adversarial: "Adversarial Events",
+          pending: "Pending Decisions",
+          explain: "Explain Decision",
+          "surveillance-report": "Surveillance Report",
+        };
+        crumbs.push({ label: labels[sub] || sub, active: true });
+      }
+    } else if (currentPath.startsWith("/governance/")) {
+      crumbs.push({ label: "Governance" });
+      const sub = currentPath.replace("/governance/", "");
+      const labels: Record<string, string> = {
+        protocols: "Protocol Amendments",
+        audit: "21 CFR Part 11 Audit Trail",
+        queries: "Query History",
+      };
+      crumbs.push({ label: labels[sub] || sub, active: true });
+    }
+
+    return crumbs;
+  };
+
+  // Render view corresponding to currentPath
+  const renderContent = () => {
+    // 1. Root & Study Dashboard
+    if (currentPath === "/" || currentPath === "") {
+      return <StudyDashboard onNavigate={navigateTo} />;
+    }
+
+    // 2. ATLAS: Subjects
+    if (currentPath === "/subjects") {
+      return <Subjects onNavigate={navigateTo} />;
+    }
+    if (currentPath === "/subjects/new" || currentPath === "/subjects/add") {
+      return <AddSubjectWizard onNavigate={navigateTo} />;
+    }
+    if (currentPath.startsWith("/subjects/")) {
+      const subjectId = decodeURIComponent(currentPath.split("/")[2]);
+      if (subjectId === "add" || subjectId === "new") {
+        return <AddSubjectWizard onNavigate={navigateTo} />;
+      }
+      return <Subject360 subjectId={subjectId} onNavigate={navigateTo} />;
+    }
+
+    // 3. ATLAS: Disease Explorer & Details
+    if (currentPath === "/disease-explorer") {
+      return <DiseaseExplorer onNavigate={navigateTo} />;
+    }
+    if (currentPath.startsWith("/disease/")) {
+      const diseaseName = decodeURIComponent(currentPath.split("/")[2]);
+      return <DiseaseDetail diseaseName={diseaseName} onNavigate={navigateTo} />;
+    }
+
+    // 4. ATLAS: Graph, Q&A, Findings
+    if (currentPath === "/graph") {
+      return <KnowledgeGraphView onNavigate={navigateTo} />;
+    }
+    if (currentPath === "/ask-atlas") {
+      return <AskAtlas onNavigate={navigateTo} />;
+    }
+    if (currentPath === "/findings") {
+      return <Findings onNavigate={navigateTo} />;
+    }
+    if (currentPath.startsWith("/findings/")) {
+      const findingId = decodeURIComponent(currentPath.split("/")[2]);
+      return <FindingDetail findingId={findingId} onNavigate={navigateTo} />;
+    }
+    if (currentPath === "/protocol-rules") {
+      return <ProtocolAmendmentsView onNavigate={navigateTo} />;
+    }
+
+    // 5. MONITOR Stage
+    if (currentPath === "/monitor/crew") {
+      return <ReviewCrewView onNavigate={navigateTo} />;
+    }
+    if (currentPath === "/monitor/medical-review") {
+      return <MedicalReviewView onNavigate={navigateTo} />;
+    }
+    if (currentPath === "/monitor/queries") {
+      return <DataQueriesView onNavigate={navigateTo} />;
+    }
+    if (currentPath === "/monitor/compliance") {
+      return <ComplianceView onNavigate={navigateTo} />;
+    }
+    if (currentPath === "/monitor/human-gate") {
+      return <HumanGateView onNavigate={navigateTo} />;
+    }
+    if (currentPath === "/monitor/trace") {
+      return <DecisionTraceView onNavigate={navigateTo} />;
+    }
+    if (currentPath === "/monitor/cycle-report") {
+      return <CycleReportView onNavigate={navigateTo} />;
+    }
+
+    // 6. WATCH Stage
+    if (currentPath === "/watch") {
+      return <WatchDashboard onNavigate={navigateTo} />;
+    }
+    if (currentPath === "/watch/timeline") {
+      return <CutTimelineView onNavigate={navigateTo} />;
+    }
+    if (currentPath.startsWith("/watch/cut-details")) {
+      const parts = currentPath.split("/");
+      const cutNum = parts[3] ? parseInt(parts[3], 10) : 5;
+      return <CutDetailsView initialCut={cutNum || 5} onNavigate={navigateTo} />;
+    }
+    if (currentPath === "/watch/adversarial") {
+      return <AdversarialEventsView onNavigate={navigateTo} />;
+    }
+    if (currentPath === "/watch/pending") {
+      return <PendingDecisionsView onNavigate={navigateTo} />;
+    }
+    if (currentPath.startsWith("/watch/explain")) {
+      const parts = currentPath.split("/");
+      const decisionId = parts[3] ? decodeURIComponent(parts[3]) : "D-012";
+      return <ExplainDecisionView initialDecisionId={decisionId} onNavigate={navigateTo} />;
+    }
+    if (currentPath === "/watch/surveillance-report") {
+      return <SurveillanceReportView onNavigate={navigateTo} />;
+    }
+
+    // 7. GOVERNANCE Stage
+    if (currentPath === "/governance/protocols") {
+      return <ProtocolAmendmentsView onNavigate={navigateTo} />;
+    }
+    if (currentPath === "/governance/audit") {
+      return <AuditTrailView onNavigate={navigateTo} />;
+    }
+    if (currentPath === "/governance/queries") {
+      return <QueryHistoryView onNavigate={navigateTo} />;
+    }
+
+    // Default 404 fallback
     return (
-      <StudySelectScreen
-        onSelectStudy={(s) => {
-          setCurrentStudy(s);
-          setCurrentScreen('DASHBOARD');
-        }}
-      />
+      <div className="p-12 text-center bg-white rounded-xl border border-slate-200 shadow-2xs">
+        <h2 className="text-base font-bold text-slate-900">Page Not Found</h2>
+        <p className="text-xs text-slate-500 mt-1">The requested URL `{currentPath}` does not exist.</p>
+        <button
+          onClick={() => navigateTo("/")}
+          className="mt-4 px-4 py-2 bg-blue-600 text-white text-xs font-semibold rounded-lg hover:bg-blue-700"
+        >
+          Return to Study Dashboard
+        </button>
+      </div>
     );
-  }
+  };
 
   return (
-    <div className="flex flex-col h-screen bg-slate-950 text-slate-100 antialiased overflow-hidden">
-      {/* Top Navigation */}
-      <Navbar
-        user={user}
-        study={currentStudy}
-        onRunCycle={handleRunCycle}
-        onReseed={handleReseed}
-        onLogout={handleLogout}
-        isRunningCycle={isRunningCycle}
-        onSwitchUser={handleLogin}
-      />
-
-      {/* Cycle notification banner if present */}
-      {cycleNotification && (
-        <div className="bg-emerald-600/90 text-white px-4 py-2 text-xs flex items-center justify-between shadow z-20">
-          <span>{cycleNotification}</span>
-          <button
-            onClick={() => setCycleNotification(null)}
-            className="text-white/80 hover:text-white font-bold ml-4"
-          >
-            ✕
-          </button>
-        </div>
-      )}
-
-      {/* Main Container: Sidebar + Content */}
-      <div className="flex flex-1 overflow-hidden">
-        <Sidebar
-          currentScreen={currentScreen}
-          onSelectScreen={(s) => setCurrentScreen(s)}
-          openFindingsCount={currentStudy.findings_count}
-          openQueriesCount={currentStudy.open_queries_count}
-          pendingEscalationsCount={currentStudy.pending_escalations_count}
-        />
-
-        <main className="flex-1 overflow-y-auto bg-slate-950">
-          {currentScreen === 'DASHBOARD' && (
-            <DashboardScreen
-              study={currentStudy}
-              onNavigate={(s) => setCurrentScreen(s)}
-              onRunCycle={handleRunCycle}
-              isRunningCycle={isRunningCycle}
-            />
-          )}
-
-          {currentScreen === 'STUDY_SELECT' && (
-            <StudySelectScreen
-              onSelectStudy={(s) => {
-                setCurrentStudy(s);
-                setCurrentScreen('DASHBOARD');
-              }}
-            />
-          )}
-
-          {currentScreen === 'STUDY_SETUP' && (
-            <StudySetupScreen study={currentStudy} />
-          )}
-
-          {currentScreen === 'SUBJECTS' && (
-            <SubjectsScreen
-              study={currentStudy}
-              onSelectSubject={handleSelectSubject}
-              onAddSubject={() => setCurrentScreen('ADD_SUBJECT')}
-            />
-          )}
-
-          {currentScreen === 'ADD_SUBJECT' && (
-            <AddSubjectScreen
-              study={currentStudy}
-              onSubjectCreated={(usubjid) => {
-                handleSelectSubject(usubjid);
-                refreshActiveStudy();
-              }}
-            />
-          )}
-
-          {currentScreen === 'IMPORT' && (
-            <ImportScreen
-              study={currentStudy}
-              onImportComplete={() => {
-                refreshActiveStudy();
-                setCurrentScreen('VALIDATION');
-              }}
-            />
-          )}
-
-          {currentScreen === 'VALIDATION' && <ValidationScreen />}
-
-          {currentScreen === 'SITE_OPERATIONS' && (
-            <SiteOperationsScreen
-              study={currentStudy}
-              onSelectSubject={handleSelectSubject}
-            />
-          )}
-
-          {currentScreen === 'ASK_ATLAS' && (
-            <AskAtlasScreen
-              study={currentStudy}
-              onViewEvidence={handleViewEvidence}
-            />
-          )}
-
-          {currentScreen === 'KNOWLEDGE_GRAPH' && (
-            <KnowledgeGraphScreen
-              study={currentStudy}
-              onSelectSubject={handleSelectSubject}
-            />
-          )}
-
-          {currentScreen === 'SUBJECT_360' && (
-            <Subject360Screen
-              initialSubjectId={selectedSubjectId}
-              onViewEvidence={handleViewEvidence}
-            />
-          )}
-
-          {currentScreen === 'REVIEW_CREW' && (
-            <ReviewCrewScreen
-              study={currentStudy}
-              onRunCycle={handleRunCycle}
-              isRunningCycle={isRunningCycle}
-            />
-          )}
-
-          {currentScreen === 'FINDINGS' && (
-            <FindingsScreen
-              study={currentStudy}
-              onViewEvidence={handleViewEvidence}
-              onSelectSubject={handleSelectSubject}
-            />
-          )}
-
-          {currentScreen === 'MEDICAL_REVIEW' && (
-            <MedicalReviewScreen
-              study={currentStudy}
-              onViewEvidence={handleViewEvidence}
-              onSelectSubject={handleSelectSubject}
-            />
-          )}
-
-          {currentScreen === 'QUERIES' && (
-            <QueriesScreen study={currentStudy} />
-          )}
-
-          {currentScreen === 'COMPLIANCE' && (
-            <ComplianceScreen
-              study={currentStudy}
-              onViewEvidence={handleViewEvidence}
-              onSelectSubject={handleSelectSubject}
-            />
-          )}
-
-          {currentScreen === 'HUMAN_GATE' && (
-            <HumanGateScreen
-              study={currentStudy}
-              onViewEvidence={handleViewEvidence}
-              onSelectSubject={handleSelectSubject}
-              onNavigateToClarification={() => setCurrentScreen('CLARIFICATION')}
-            />
-          )}
-
-          {currentScreen === 'CLARIFICATION' && (
-            <ClarificationScreen
-              study={currentStudy}
-              onViewEvidence={handleViewEvidence}
-              onSelectSubject={handleSelectSubject}
-            />
-          )}
-
-          {currentScreen === 'DECISION_TRACE' && (
-            <DecisionTraceScreen
-              study={currentStudy}
-              onSelectSubject={handleSelectSubject}
-            />
-          )}
-
-          {currentScreen === 'CYCLE_REPORT' && (
-            <CycleReportScreen
-              study={currentStudy}
-              onSelectSubject={handleSelectSubject}
-            />
-          )}
-
-          {currentScreen === 'PROTOCOL_RULES' && (
-            <ProtocolRulesScreen study={currentStudy} />
-          )}
-
-          {currentScreen === 'QUERY_HISTORY' && (
-            <QueryHistoryScreen
-              study={currentStudy}
-              onSelectSubject={handleSelectSubject}
-            />
-          )}
-
-          {currentScreen === 'DATA_CUT_SIMULATOR' && (
-            <DataCutSimulatorScreen
-              study={currentStudy}
-              onRefreshStudy={refreshActiveStudy}
-              onNavigateToCrew={() => setCurrentScreen('REVIEW_CREW')}
-            />
-          )}
-        </main>
-      </div>
-
-      {/* Global Clinical Evidence Provenance Slide-over */}
-      <EvidenceDrawer
-        isOpen={drawerOpen}
-        onClose={() => setDrawerOpen(false)}
-        evidence={drawerEvidence}
-        title={drawerTitle}
-      />
-    </div>
+    <MainLayout
+      currentPath={currentPath}
+      onNavigate={navigateTo}
+      breadcrumbs={getBreadcrumbs()}
+      pendingEscalationsCount={pendingEscalationsCount}
+    >
+      {renderContent()}
+    </MainLayout>
   );
 };
