@@ -1,0 +1,14 @@
+SITEID,LBTESTCD,LBTEST,SPECIMEN,LBSTRESU,REFLO,REFHI,REFUNIT,AGE_LOW,AGE_HIGH,SEX
+SITE-101,ALT,Alanine Aminotransferase,SERUM,U/L,7,45,U/L,18,99,M
+SITE-101,ALT,Alanine Aminotransferase,SERUM,U/L,7,35,U/L,18,99,F
+SITE-101,AST,Aspartate Aminotransferase,SERUM,U/L,8,40,U/L,18,99,ALL
+SITE-101,BILI,Total Bilirubin,SERUM,mg/dL,0.2,1.2,mg/dL,18,99,ALL
+SITE-101,CREAT,Creatinine,SERUM,mg/dL,0.6,1.2,mg/dL,18,99,M
+SITE-101,CREAT,Creatinine,SERUM,mg/dL,0.5,1.1,mg/dL,18,99,F
+SITE-102,ALT,Alanine Aminotransferase,SERUM,U/L,7,45,U/L,18,99,ALL
+SITE-102,BILI,Total Bilirubin,SERUM,umol/L,3.4,20.5,umol/L,18,99,ALL
+SITE-102,NEUT,Neutrophils Absolute,WHOLE BLOOD,10^9/L,1.8,7.5,10^9/L,18,99,ALL
+SITE-102,VL,Viral Load RNA,PLASMA,copies/mL,0,50,copies/mL,18,99,ALL
+SITE-103,ALT,Alanine Aminotransferase,SERUM,U/L,7,45,U/L,18,99,ALL
+SITE-103,BILI,Total Bilirubin,SERUM,mg/dL,0.2,1.2,mg/dL,18,99,ALL
+SITE-103,CREAT,Creatinine,SERUM,umol/L,53,106,umol/L,18,99,ALL

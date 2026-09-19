@@ -1,0 +1,31 @@
+# Dependencies
+node_modules/
+frontend/node_modules/
+
+# Python cache & environments
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+env/
+venv/
+.venv/
+
+# Production build outputs
+dist/
+frontend/dist/
+.vite/
+
+# Archives & Temporary files
+*.zip
+*.tar.gz
+*.log
+scratch/
+
+# Environment variables & local secrets
+.env
+.env.local
+
+# OS files
+Thumbs.db
+.DS_Store
