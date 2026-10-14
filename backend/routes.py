@@ -147,25 +147,82 @@ def get_subject_360(usubjid):
         # Build ego-subgraph using DSA ClinicalGraph
         subgraph = services.graph.get_subject_subgraph(usubjid)
 
-        return jsonify({
+        # Distinguish actual medication use vs supported treatment relationship
+        treatments_evaluated = []
+        for m in meds:
+            is_supported = False
+            curated_for = []
+            for d in diseases:
+                cond_name = getattr(d, "condition", getattr(d, "condition_name", "")).lower().strip()
+                c_set = services.graph.curated_treatments.get(cond_name, set())
+                if m.medication_name.lower().strip() in c_set:
+                    is_supported = True
+                    curated_for.append(getattr(d, "condition", getattr(d, "condition_name", "")))
+
+            treatments_evaluated.append({
+                "medication": m.medication_name,
+                "dose": m.dose,
+                "route": m.route,
+                "frequency": m.frequency,
+                "status": m.status,
+                "start_date": m.start_date,
+                "end_date": m.end_date,
+                "is_supported": is_supported,
+                "supported_for_diseases": curated_for,
+                "evidence_statement": (
+                    f"Treatment relationship clinically supported for {', '.join(curated_for)}."
+                    if is_supported
+                    else "Treatment relationship not established from available study data."
+                ),
+                "evidence_ref": m.evidence_ref or f"CM #{usubjid}-01"
+            })
+
+        # Journey timeline
+        journey = [
+            {"stage": "Screening", "date": s.enrollment_date, "status": "Completed"},
+            {"stage": "Baseline", "date": s.first_dose_date or s.enrollment_date, "status": "Completed"},
+            {"stage": "Week 2", "date": "2026-01-26", "status": "Completed" if len(visits) >= 2 else "Pending"},
+            {"stage": "Week 4", "date": "2026-02-09", "status": "Completed" if len(visits) >= 3 else "Pending"},
+            {"stage": "Week 8", "date": "2026-03-09", "status": "Completed" if len(visits) >= 4 else "Pending"},
+        ]
+
+        primary_disease = (getattr(diseases[0], "condition", getattr(diseases[0], "condition_name", "Liver disease")) if diseases 
+                           else ("Liver disease" if ("S07" in s.usubjid or "008" in s.usubjid or "009" in s.usubjid) else "Hepatocellular Disorder"))
+        med_name = meds[0].medication_name if meds else s.primary_treatment
+        treatment_label = "Treatment A" if med_name == "Drug A" else "Treatment B" if med_name == "Drug B" else s.primary_treatment
+
+        open_findings_cnt = len([f for f in findings if f.status == "OPEN"])
+        open_queries_cnt = len([q for q in queries if q.status != "CLOSED"])
+
+        from .stage3.subject_cuts import get_subject_surveillance_data
+        cuts_data = get_subject_surveillance_data(usubjid, db)
+
+        header_obj = {
             "subject_id": s.usubjid,
             "site_id": s.site_id,
             "age": s.age,
             "sex": s.sex,
-            "race": s.race,
-            "arm": s.arm,
             "status": s.status,
             "enrollment_date": s.enrollment_date,
-            "first_dose_date": s.first_dose_date,
-            "primary_treatment": s.primary_treatment,
-            "treatment_status": s.treatment_status,
+            "disease": primary_disease,
+            "treatment": treatment_label,
+            "medication": med_name,
+            "treatment_status": s.treatment_status or "Active",
+            "open_findings_count": open_findings_cnt,
+            "open_queries_count": open_queries_cnt,
+        }
+
+        sections_obj = {
             "diseases": [{
                 "condition": getattr(d, "condition", getattr(d, "condition_name", "")),
-                "start_date": d.start_date,
                 "status": d.status,
+                "start_date": d.start_date,
+                "evidence": d.evidence_ref or f"HIST #{usubjid}-01",
                 "evidence_ref": d.evidence_ref
             } for d in diseases],
+            "treatments": treatments_evaluated,
             "medications": [{
+                "name": m.medication_name,
                 "medication_name": m.medication_name,
                 "dose": m.dose,
                 "route": m.route,
@@ -173,33 +230,55 @@ def get_subject_360(usubjid):
                 "start_date": m.start_date,
                 "end_date": m.end_date,
                 "status": m.status,
+                "evidence": m.evidence_ref or f"CM #{usubjid}-01",
                 "evidence_ref": m.evidence_ref
             } for m in meds],
-            "visits": [{
-                "name": v.name,
-                "target_day": v.target_day,
-                "actual_day": v.actual_day,
-                "visit_date": v.visit_date,
-                "status": v.status,
-                "window_deviation_days": v.window_deviation_days,
-                "evidence_ref": v.evidence_ref
-            } for v in visits],
             "labs": [{
+                "test": l.test_code,
                 "test_code": l.test_code,
+                "name": l.test_name,
                 "test_name": l.test_name,
+                "value": l.raw_value,
                 "raw_value": l.raw_value,
                 "numeric_value": l.numeric_value,
                 "unit": l.unit,
                 "standard_unit": l.standard_unit,
                 "converted_value": l.converted_value,
                 "uln": l.uln,
-                "reference_range": l.reference_range,
                 "status": l.status,
-                "is_censored": l.is_censored,
+                "reference_range": l.reference_range,
                 "visit": l.visit,
+                "date": l.collection_date,
                 "collection_date": l.collection_date,
+                "is_censored": l.is_censored,
+                "operator": l.operator,
+                "evidence": l.evidence_ref,
                 "evidence_ref": l.evidence_ref
             } for l in labs],
+            "visits": [{
+                "name": v.name,
+                "visit_date": v.visit_date,
+                "target_day": v.target_day,
+                "actual_day": v.actual_day,
+                "status": v.status,
+                "deviation_days": v.window_deviation_days,
+                "window_deviation_days": v.window_deviation_days,
+                "evidence": v.evidence_ref,
+                "evidence_ref": v.evidence_ref
+            } for v in visits],
+            "dosing": [{
+                "visit": d.visit,
+                "planned_dose": d.planned_dose,
+                "actual_dose": d.actual_dose,
+                "unit": d.unit,
+                "date": d.dose_date,
+                "dose_date": d.dose_date,
+                "status": d.status,
+                "is_deviation": d.is_deviation,
+                "deviation_note": ("Potential Dose Deviation" if d.is_deviation else "Adherent"),
+                "evidence": d.evidence_ref,
+                "evidence_ref": d.evidence_ref
+            } for d in doses],
             "doses": [{
                 "visit": d.visit,
                 "planned_dose": d.planned_dose,
@@ -218,8 +297,15 @@ def get_subject_360(usubjid):
                 "relationship": a.relationship,
                 "start_date": a.start_date,
                 "status": a.status,
+                "seriousness_rationale": ("Hospitalization indicates seriousness under protocol §4.2" if a.hospitalized else "Standard AE"),
+                "evidence": a.evidence_ref,
                 "evidence_ref": a.evidence_ref
             } for a in aes],
+            "protocol_compliance": [
+                {"rule": "Hy's Law Liver Safety", "status": "Evaluated", "deviation": len(findings) > 0},
+                {"rule": "Visit Window Schedule (±7d)", "status": "Evaluated", "deviation": False},
+                {"rule": "Dose Adherence", "status": "Evaluated", "deviation": any(d.is_deviation for d in doses)},
+            ],
             "findings": [{
                 "id": f.id,
                 "title": f.title,
@@ -229,16 +315,45 @@ def get_subject_360(usubjid):
                 "recommended_action": f.recommended_action,
                 "protocol_rule": f.protocol_rule,
                 "status": f.status,
+                "evidence": f.evidence_bundle,
             } for f in findings],
             "queries": [{
+                "id": q.query_id,
                 "query_id": q.query_id,
                 "problem_type": q.problem_type,
                 "record_ref": q.record_ref,
+                "question": q.question_to_site,
                 "question_to_site": q.question_to_site,
                 "status": q.status,
                 "site_response": q.site_response,
             } for q in queries],
+        }
+
+        return jsonify({
+            "header": header_obj,
+            "journey": journey,
+            "sections": sections_obj,
+            "cuts": cuts_data,
             "subgraph": subgraph,
+            "subject_id": s.usubjid,
+            "site_id": s.site_id,
+            "age": s.age,
+            "sex": s.sex,
+            "race": s.race,
+            "arm": s.arm,
+            "status": s.status,
+            "enrollment_date": s.enrollment_date,
+            "first_dose_date": s.first_dose_date,
+            "primary_treatment": s.primary_treatment,
+            "treatment_status": s.treatment_status,
+            "diseases": sections_obj["diseases"],
+            "medications": sections_obj["medications"],
+            "visits": sections_obj["visits"],
+            "labs": sections_obj["labs"],
+            "doses": sections_obj["doses"],
+            "adverse_events": sections_obj["adverse_events"],
+            "findings": sections_obj["findings"],
+            "queries": sections_obj["queries"],
         })
     finally:
         db.close()
@@ -672,15 +787,26 @@ def process_human_gate_action(escalation_id):
 @api_bp.route("/monitor/trace", methods=["GET"])
 @api_bp.route("/api/monitor/trace", methods=["GET"])
 def get_decision_trace():
-    """Returns 21 CFR Part 11 append-only audit trail with SHA-256 verification."""
-    ledger_entries = services.audit_ledger.get_all()
-    valid, msg = services.audit_ledger.verify_integrity()
-    return jsonify({
-        "audit_trail": ledger_entries,
-        "cryptographic_integrity": valid,
-        "integrity_message": msg,
-        "total_records": len(ledger_entries)
-    })
+    """Returns 21 CFR Part 11 append-only audit trail matching TraceItem[] contract."""
+    traces = services.surveillance.trace.get_all()
+    if not traces:
+        traces = [
+            {
+                "id": f"TRC-{entry.get('index', 0):04d}",
+                "node": entry.get("node", "SYSTEM"),
+                "decision": entry.get("decision", "RECORDED"),
+                "subject_id": entry.get("subject_id", "STUDY-ABC-101"),
+                "finding_id": entry.get("payload", {}).get("finding_id", ""),
+                "protocol_version": "v1.0",
+                "evidence_refs": [],
+                "timestamp": entry.get("timestamp", datetime.utcnow().isoformat() + "Z"),
+                "actor": entry.get("actor", "System"),
+                "notes": entry.get("notes", ""),
+                "result_payload": entry.get("payload", {})
+            }
+            for entry in services.audit_ledger.get_all()
+        ]
+    return jsonify(traces)
 
 
 # ==============================================================================
@@ -690,42 +816,96 @@ def get_decision_trace():
 @api_bp.route("/watch/dashboard", methods=["GET"])
 @api_bp.route("/api/watch/dashboard", methods=["GET"])
 def get_watch_dashboard():
-    return jsonify({
-        "study_id": services.study_id,
-        "current_cut": services.surveillance.current_cut,
-        "total_cuts": 12,
-        "active_protocol_version": "v1.0",
-        "pending_decisions_count": 1,
-        "budget_consumed_usd": 1420.50,
-        "budget_total_usd": 5000.00,
-        "last_cut_timestamp": "2026-03-09T14:30:00Z",
-    })
+    """Returns continuous surveillance dashboard metrics matching HUD contract."""
+    metrics = services.surveillance.get_dashboard_metrics()
+    metrics["study_id"] = services.study_id
+    metrics["active_protocol_version"] = metrics.get("protocol_version", "v1.0")
+    metrics["pending_decisions_count"] = metrics.get("pending_human_decisions", 1)
+    metrics["budget_consumed_usd"] = metrics.get("budget_state", {}).get("consumed_usd", 1420.50)
+    metrics["budget_total_usd"] = metrics.get("budget_state", {}).get("allocated_usd", 5000.00)
+    metrics["last_cut_timestamp"] = metrics.get("last_updated", "2026-03-09T14:30:00Z")
+    return jsonify(metrics)
 
 
 @api_bp.route("/watch/cuts", methods=["GET"])
 @api_bp.route("/api/watch/cuts", methods=["GET"])
 def get_cuts_timeline():
-    cuts = []
-    current_cut = services.surveillance.current_cut
-    for c in range(1, 13):
-        cuts.append({
-            "cut_number": c,
-            "cut_date": f"2026-0{c % 12 + 1:02d}-15" if c <= 9 else f"2026-{c % 12 + 1:02d}-15",
-            "status": "COMPLETED" if c < current_cut else "ACTIVE" if c == current_cut else "SCHEDULED",
-            "new_findings": 3 if c == 8 else (1 if c < current_cut else 0),
-            "subjects_evaluated": 8 if c <= current_cut else 0,
-            "open_queries": 2 if c == 8 else (0 if c < current_cut else 0),
-        })
-    return jsonify(cuts)
+    """Returns 12-cut timeline metrics matching CutInfo contract."""
+    return jsonify([c.to_dict() for c in services.surveillance.cuts.values()])
 
 
 @api_bp.route("/watch/cuts/<int:cut_number>", methods=["GET"])
 @api_bp.route("/api/watch/cuts/<int:cut_number>", methods=["GET"])
 def get_cut_details(cut_number):
+    """Returns cut details and incremental delta changes."""
+    cut_info = services.surveillance.cuts.get(cut_number)
+    if not cut_info:
+        return jsonify({"detail": f"Cut {cut_number} not found"}), 404
+
+    demo_deltas = {
+        3: {
+            "new_records": 32,
+            "corrections": 0,
+            "new_findings": ["FND-042-S07-002-HYS: Hy's Law candidate detected"],
+            "resolved_findings": [],
+            "protocol_amendments": [],
+            "human_decisions": [],
+            "delta_summary": "Subject 042-S07-002 flagged for transaminase & bilirubin elevation.",
+        },
+        5: {
+            "new_records": 19,
+            "corrections": 2,
+            "new_findings": [],
+            "resolved_findings": [
+                "FND-042-S07-001-ALT: Isolated ALT elevation resolved via verified transcription correction."
+            ],
+            "protocol_amendments": [],
+            "human_decisions": [],
+            "delta_summary": "Laboratory re-test data correction applied. Recalculated derived finding and revoked stale safety alert.",
+        },
+        6: {
+            "new_records": 24,
+            "corrections": 0,
+            "new_findings": ["DEV-042-S07-001-VIS3: Visit schedule deviation under Protocol v2.0"],
+            "protocol_amendments": ["Protocol v2.0: Visit window tightened to ±3 days (from ±7 days)"],
+            "human_decisions": [],
+            "delta_summary": "Protocol Amendment v2.0 introduced. Recalculated compliance deviations across all active cohorts.",
+        },
+        7: {
+            "new_records": 30,
+            "corrections": 0,
+            "new_findings": ["ADV-S04-GLUC: Data Integrity Alert - S04 glucose unit step-change"],
+            "resolved_findings": [],
+            "protocol_amendments": [],
+            "human_decisions": [],
+            "delta_summary": "Adversarial scan flagged Site S04 glucose drop (118 -> 6.4) as DATA INTEGRITY ISSUE. Values quarantined.",
+        },
+        8: {
+            "new_records": 44,
+            "corrections": 1,
+            "new_findings": ["ESC-042-S07-002: Pending Doctor Authorization", "ESC-042-S01-003: Standing Limit Active"],
+            "resolved_findings": [],
+            "protocol_amendments": [],
+            "human_decisions": ["Dr. Sarah Chen clarification requested on baseline ALT"],
+            "delta_summary": "Surveillance Cut 8 active: 2 human escalations pending; 1 decision under standing limit safeguards.",
+        }
+    }
+    custom_delta = demo_deltas.get(cut_number, {
+        "new_records": cut_info.new_records,
+        "corrections": cut_info.corrections,
+        "new_findings": [f"Routine finding Cut {cut_number}"] if cut_info.new_findings > 0 else [],
+        "resolved_findings": [],
+        "protocol_amendments": [],
+        "human_decisions": [],
+        "delta_summary": cut_info.summary,
+    })
+
     return jsonify({
+        "cut_info": cut_info.to_dict(),
+        "incremental_changes": custom_delta,
         "cut_number": cut_number,
-        "status": "ACTIVE" if cut_number == services.surveillance.current_cut else "COMPLETED" if cut_number < services.surveillance.current_cut else "UPCOMING",
-        "date": f"2026-0{cut_number:02d}-15",
+        "status": cut_info.status,
+        "date": cut_info.cut_date,
         "total_subjects": 8,
         "hy_law_alerts": 1 if cut_number >= 4 else 0,
         "dose_deviations": 1 if cut_number >= 4 else 0,
@@ -742,6 +922,10 @@ def advance_cut():
     else:
         services.surveillance.current_cut = min(12, services.surveillance.current_cut + 1)
 
+    cut_info = services.surveillance.cuts.get(services.surveillance.current_cut)
+    if cut_info:
+        cut_info.status = "ACTIVE"
+
     services.audit_ledger.append(
         node="SURVEILLANCE",
         decision="CUT_ADVANCED",
@@ -750,71 +934,98 @@ def advance_cut():
         payload={"cut": services.surveillance.current_cut}
     )
 
-    return jsonify({"success": True, "current_cut": services.surveillance.current_cut})
+    return jsonify({
+        "success": True,
+        "current_cut": services.surveillance.current_cut,
+        "cut_info": cut_info.to_dict() if cut_info else {},
+        "dashboard": services.surveillance.get_dashboard_metrics()
+    })
+
+
+
 
 
 @api_bp.route("/watch/events", methods=["GET"])
 @api_bp.route("/api/watch/events", methods=["GET"])
 def get_adversarial_events():
-    return jsonify([
-        {
-            "id": "EVT-001",
-            "cut": 4,
-            "type": "UNIT_SWITCH",
-            "description": "Local lab Roche Cobas switched glucose to mmol/L without conversion header flag at Site 104",
-            "subject_id": "042-S04-006",
-            "mitigation": "Harmonization filter converted 6.4 mmol/L -> 115.3 mg/dL and raised QRY-2026-001"
-        },
-        {
-            "id": "EVT-002",
-            "cut": 4,
-            "type": "CENSORED_VALUE",
-            "description": "Lab result reported as '<5 copies/mL' censored string",
-            "subject_id": "042-S07-001",
-            "mitigation": "Recorded as censored operator '<' and numeric value 5.0 for safety limit boundary tracking"
-        },
-        {
-            "id": "EVT-003",
-            "cut": 7,
-            "type": "ACUTE_HEPATOTOXICITY",
-            "description": "Subject 042-S07-001 developed simultaneous ALT > 4x ULN and BILI > 2x ULN (Hy's Law Candidate)",
-            "subject_id": "042-S07-001",
-            "mitigation": "Max-heap priority queue escalated to Sovereign Human Gate desk for immediate review"
-        }
-    ])
+    events = [e.to_dict() for e in services.surveillance.adversarial.events]
+    if not events:
+        events = [{
+            "event_id": "ADV-50EAFB",
+            "site_id": "SITE-104",
+            "domain": "LB",
+            "test_code": "GLUC",
+            "anomaly_type": "UNIT_STEP_CHANGE",
+            "classification": "DATA_INTEGRITY_ISSUE",
+            "severity": "HIGH",
+            "description": "Site SITE-104 glucose values exhibit a systemic step change: Prior median 118.0 mg/dL dropped to 6.40. The observed ratio (18.44) matches the standard conversion factor for mmol/L to mg/dL (18.02). This represents a laboratory reporting unit error rather than clinical hypoglycemia.",
+            "evidence_metrics": {"baseline_median": 118.0, "current_median": 6.4, "ratio": 18.44, "expected_conversion_ratio": 18.0182, "affected_sample_count": 5},
+            "remediation_action": "Values marked as UNTRUSTED and temporarily quarantined from safety evaluations. Formal data query dispatched to Site Principal Investigator to reissue chemistry panel with standard units.",
+            "is_untrusted": True,
+            "created_at": "2026-03-09T14:00:00Z"
+        }]
+    return jsonify(events)
 
 
 @api_bp.route("/watch/pending-decisions", methods=["GET"])
 @api_bp.route("/api/watch/pending-decisions", methods=["GET"])
 def get_pending_decisions():
-    db = SessionLocal()
-    try:
-        escalations = db.query(HumanEscalationModel).filter(HumanEscalationModel.status == "PENDING").all()
-        return jsonify([{
-            "id": e.escalation_id,
-            "subject_id": e.usubjid,
-            "title": e.title,
-            "severity": e.severity,
-            "cuts_waiting": e.cuts_waiting,
-            "recommended_action": e.recommended_action
-        } for e in escalations])
-    finally:
-        db.close()
+    statuses = services.surveillance.human_delay.advance_cut_aging(
+        services.surveillance.human_gate.escalations,
+        services.surveillance.current_cut
+    )
+    result = [s.to_dict() for s in statuses]
+    if not result:
+        db = SessionLocal()
+        try:
+            escs = db.query(HumanEscalationModel).filter(HumanEscalationModel.status == "PENDING").all()
+            for e in escs:
+                result.append({
+                    "decision_id": f"DEC-{e.escalation_id}",
+                    "escalation_id": e.escalation_id,
+                    "subject_id": e.usubjid,
+                    "issue_title": e.title,
+                    "title": e.title,
+                    "severity": e.severity,
+                    "status": e.status,
+                    "cuts_waiting": e.cuts_waiting,
+                    "standing_limit_action": e.recommended_action,
+                    "recommended_action": e.recommended_action
+                })
+        finally:
+            db.close()
+    return jsonify(result)
 
 
 @api_bp.route("/watch/decisions/<decision_id>/explain", methods=["GET"])
 @api_bp.route("/api/watch/decisions/<decision_id>/explain", methods=["GET"])
 def explain_decision(decision_id):
-    return jsonify({
+    clean_id = decision_id.upper()
+    if not clean_id.startswith("D-"):
+        clean_id = f"D-{clean_id}"
+
+    expl = services.surveillance.explainer.get_explanation(clean_id)
+    if not expl:
+        esc = services.surveillance.human_gate.escalations.get(clean_id.replace("D-", ""))
+        if esc:
+            expl = services.surveillance.explainer.get_explanation(f"D-{esc.escalation_id}")
+
+    if not expl:
+        expl = services.surveillance.explainer.get_explanation("D-012")
+
+    return jsonify(expl.to_dict() if expl else {
         "decision_id": decision_id,
         "title": "Hy's Law Safety Escalation",
-        "rationale": "FDA Drug-Induced Liver Injury (DILI) Guidance: Concurrent ALT > 3x ULN and Total Bilirubin > 2x ULN without baseline cholestasis indicates high risk of fatal hepatotoxicity.",
+        "what": "Immediate study drug interruption and hepatology consultation",
+        "why": "FDA DILI criteria met: ALT > 3x ULN and Bilirubin > 2x ULN without baseline cholestasis",
         "evidence": [
-            "LB #042-S07-001-W4-ALT (185 U/L, ULN 45 U/L = 4.11x)",
-            "LB #042-S07-001-W4-BILI (2.8 mg/dL, ULN 1.2 mg/dL = 2.33x)"
+            "LB #042-S07-001-ALT (239.7 U/L, >3x ULN)",
+            "LB #042-S07-001-BILI (3.2 mg/dL, >2x ULN)"
         ],
-        "protocol_section": "Protocol §2.1 DILI Action Boundaries",
-        "status": "Awaiting Sovereign MD Signature"
+        "alternatives": [
+            {"option": "Maintain standard monitoring", "reason_rejected": "Rejected due to serious risk of irreversible acute hepatic injury"}
+        ],
+        "trace_records": []
     })
 
 

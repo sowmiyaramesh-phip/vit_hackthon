@@ -361,7 +361,8 @@ def populate_all(graph: ClinicalGraph, surveillance: WatchSurveillance):
         }
     )
     db.add(f1)
-    graph.findings_by_subject["042-S07-002"].append(f1.__dict__)
+    clean_f1 = {k: v for k, v in f1.__dict__.items() if not k.startswith("_")}
+    graph.findings_by_subject["042-S07-002"].append(clean_f1)
 
     # Escalation in Human Gate
     esc1 = HumanEscalationModel(
