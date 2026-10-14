@@ -201,6 +201,9 @@ export const HumanGateView: React.FC<HumanGateViewProps> = ({ onNavigate }) => {
                   <span className="text-xs text-slate-500">
                     Subject: <strong className="text-blue-700 font-mono">{esc.subject_id}</strong>
                   </span>
+                  <span className="text-xs font-mono text-slate-400">
+                    Date: {esc.created_at ? new Date(esc.created_at).toISOString().split("T")[0] : "2026-02-08"}
+                  </span>
                   <StatusBadge status={esc.severity} />
                   {esc.cuts_waiting > 0 && (
                     <span className="px-2 py-0.5 text-[10px] font-bold rounded bg-amber-100 text-amber-900">

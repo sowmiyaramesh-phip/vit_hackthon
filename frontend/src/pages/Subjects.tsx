@@ -148,6 +148,7 @@ export const Subjects: React.FC<SubjectsProps> = ({ onNavigate }) => {
               <tr>
                 <th className="py-3 px-4">Subject ID</th>
                 <th className="py-3 px-4">Site</th>
+                <th className="py-3 px-4">Enrollment Date</th>
                 <th className="py-3 px-4">Disease</th>
                 <th className="py-3 px-4">Treatment</th>
                 <th className="py-3 px-4">Medication</th>
@@ -160,13 +161,13 @@ export const Subjects: React.FC<SubjectsProps> = ({ onNavigate }) => {
             <tbody className="divide-y divide-slate-100">
               {loading ? (
                 <tr>
-                  <td colSpan={9} className="py-8 text-center text-slate-400">
+                  <td colSpan={10} className="py-8 text-center text-slate-400">
                     Loading clinical subjects...
                   </td>
                 </tr>
               ) : subjects.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="py-8 text-center text-slate-400">
+                  <td colSpan={10} className="py-8 text-center text-slate-400">
                     No subjects matched the applied search and filter criteria.
                   </td>
                 </tr>
@@ -182,6 +183,9 @@ export const Subjects: React.FC<SubjectsProps> = ({ onNavigate }) => {
                     </td>
                     <td className="py-3.5 px-4 font-mono text-slate-700 font-medium">
                       {s.site_id.replace("SITE-", "S").replace("10", "0")}
+                    </td>
+                    <td className="py-3.5 px-4 font-mono text-slate-600">
+                      {s.enrollment_date || "2026-01-10"}
                     </td>
                     <td className="py-3.5 px-4">
                       <span className="font-semibold text-purple-900">

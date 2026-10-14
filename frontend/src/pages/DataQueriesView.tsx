@@ -103,7 +103,7 @@ export const DataQueriesView: React.FC<DataQueriesViewProps> = ({ onNavigate }) 
                   </div>
                   <div className="text-xs font-semibold text-slate-800">{q.problem_type}</div>
                   <div className="text-[11px] text-slate-500 truncate">
-                    Subject {q.subject_id} · {q.record_ref}
+                    Subject {q.subject_id} · {q.record_ref} · {q.created_at ? new Date(q.created_at).toISOString().split("T")[0] : "2026-02-12"}
                   </div>
                 </button>
               );
@@ -124,7 +124,7 @@ export const DataQueriesView: React.FC<DataQueriesViewProps> = ({ onNavigate }) 
                   </div>
                   <h3 className="text-base font-bold text-slate-900 mt-1">{activeQuery.problem_type}</h3>
                   <div className="text-xs text-slate-500 mt-0.5">
-                    Subject: <strong className="font-mono">{activeQuery.subject_id}</strong> | Site: {activeQuery.site_id} | Record: <strong className="font-mono">{activeQuery.record_ref}</strong>
+                    Subject: <strong className="font-mono">{activeQuery.subject_id}</strong> | Site: {activeQuery.site_id} | Record: <strong className="font-mono">{activeQuery.record_ref}</strong> | Issued: <strong className="font-mono">{activeQuery.created_at ? new Date(activeQuery.created_at).toISOString().split("T")[0] : "2026-02-12"}</strong>
                   </div>
                 </div>
 

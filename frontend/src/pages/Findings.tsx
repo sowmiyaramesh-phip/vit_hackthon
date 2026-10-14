@@ -72,6 +72,7 @@ export const Findings: React.FC<FindingsProps> = ({ onNavigate }) => {
             <tr>
               <th className="py-3 px-4">Finding</th>
               <th className="py-3 px-4">Subject / Site</th>
+              <th className="py-3 px-4">Detected Date</th>
               <th className="py-3 px-4">Category</th>
               <th className="py-3 px-4">Severity</th>
               <th className="py-3 px-4">Status</th>
@@ -82,13 +83,13 @@ export const Findings: React.FC<FindingsProps> = ({ onNavigate }) => {
           <tbody className="divide-y divide-slate-100">
             {loading ? (
               <tr>
-                <td colSpan={7} className="py-8 text-center text-slate-400">
+                <td colSpan={8} className="py-8 text-center text-slate-400">
                   Loading clinical findings...
                 </td>
               </tr>
             ) : findings.length === 0 ? (
               <tr>
-                <td colSpan={7} className="py-8 text-center text-slate-400">
+                <td colSpan={8} className="py-8 text-center text-slate-400">
                   No findings matching criteria.
                 </td>
               </tr>
@@ -105,6 +106,9 @@ export const Findings: React.FC<FindingsProps> = ({ onNavigate }) => {
                   <td className="py-3.5 px-4">
                     <span className="font-mono font-bold text-blue-600">{f.subject_id}</span>
                     <span className="text-slate-400 ml-1.5">({f.site_id})</span>
+                  </td>
+                  <td className="py-3.5 px-4 font-mono text-slate-600 text-[11px]">
+                    {f.created_at ? new Date(f.created_at).toISOString().split("T")[0] : "2026-02-08"}
                   </td>
                   <td className="py-3.5 px-4">
                     <span className="px-2 py-0.5 rounded font-bold text-[10px] uppercase bg-slate-100 text-slate-700">
