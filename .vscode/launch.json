@@ -1,0 +1,27 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Python: Run ATLAS+MONITORING (Flask)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "backend.app",
+      "jinja": true,
+      "justMyCode": true
+    },
+    {
+      "name": "Launch Chrome to ATLAS+MONITORING",
+      "type": "chrome",
+      "request": "launch",
+      "url": "http://127.0.0.1:5000/",
+      "webRoot": "${workspaceFolder}/frontend"
+    },
+    {
+      "name": "Launch Edge to ATLAS+MONITORING",
+      "type": "msedge",
+      "request": "launch",
+      "url": "http://127.0.0.1:5000/",
+      "webRoot": "${workspaceFolder}/frontend"
+    }
+  ]
+}

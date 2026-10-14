@@ -1,0 +1,23 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Start ATLAS+MONITORING (Flask Server)",
+      "type": "shell",
+      "command": "py -m backend.app",
+      "isBackground": true,
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "new",
+        "group": "servers"
+      }
+    },
+    {
+      "label": "Open in Google Chrome",
+      "type": "shell",
+      "command": "start http://127.0.0.1:5000/",
+      "problemMatcher": []
+    }
+  ]
+}
